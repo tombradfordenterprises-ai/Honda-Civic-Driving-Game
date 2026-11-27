@@ -4,6 +4,7 @@ import { Environment, Html, PerspectiveCamera } from '@react-three/drei';
 import { Physics } from '@react-three/rapier';
 import useKeys from './hooks/useKeys.js';
 import Civic from './vehicle/Civic.jsx';
+import Rival from './vehicle/Rival.jsx';
 import Track from './world/Track.jsx';
 import HUD from './ui/HUD.jsx';
 
@@ -29,6 +30,7 @@ function Scene({ keys, onTelemetry }) {
         <Physics gravity={[0, -9.81, 0]}>
           <Track />
           <Civic keys={keys} onTelemetry={onTelemetry} />
+          <Rival />
         </Physics>
         <Environment preset="park" />
       </Suspense>
