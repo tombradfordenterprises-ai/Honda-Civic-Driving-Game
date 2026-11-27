@@ -144,7 +144,9 @@ export default function Civic({ keys, onTelemetry, cameraMode = 'bumper', onLap,
     const steeringInput = left - right;
     steer.current = THREE.MathUtils.damp(steer.current, steeringInput, VEHICLE.steeringDamping, dt);
     const speedLimit = VEHICLE.maxForwardSpeed * (onGrass ? VEHICLE.grassSpeedMultiplier : 1);
-    const acceleration = throttle ? VEHICLE.driveForce / VEHICLE.mass : 0;
+    // Arcade acceleration is intentionally stronger than the old force-based setup.
+    // The previous value made the car crawl away from a standstill.
+    const acceleration = throttle ? (VEHICLE.driveForce * 8) / VEHICLE.mass : 0;
     const braking = brake ? VEHICLE.brakeForce / VEHICLE.mass : 0;
     arcadeSpeed.current += acceleration * dt;
     if (brake) arcadeSpeed.current = Math.max(0, arcadeSpeed.current - braking * dt);
