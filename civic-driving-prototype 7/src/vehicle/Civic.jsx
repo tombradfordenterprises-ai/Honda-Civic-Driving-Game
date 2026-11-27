@@ -246,8 +246,36 @@ export default function Civic({ keys, onTelemetry, cameraMode = 'bumper', onLap,
       visual.current.rotation.z = suspensionState.roll;
     }
 
+    // Hard safety limits: prevent an unstable physics impulse from
+    // sending the car to extreme speeds or launching it out of the scene.
+    const safeVelocity = rb.linvel();
+    const horizontalSpeed = Math.hypot(safeVelocity.x, safeVelocity.z);
+    const speedLimit = VEHICLE.maxForwardSpeed + 1.5;
+    if (horizontalSpeed > speedLimit) {
+      const scale = speedLimit / horizontalSpeed;
+      rb.setLinvel({ x: safeVelocity.x * scale, y: THREE.MathUtils.clamp(safeVelocity.y, -7, 7), z: safeVelocity.z * scale }, true);
+    } else if (Math.abs(safeVelocity.y) > 7) {
+      rb.setLinvel({ x: safeVelocity.x, y: Math.sign(safeVelocity.y) * 7, z: safeVelocity.z }, true);
+    }
+    const safeAngular = rb.angvel();
+    if (Math.abs(safeAngular.y) > 2.8) {
+      rb.setAngvel({ x: 0, y: Math.sign(safeAngular.y) * 2.8, z: 0 }, true);
+    }
+
+    // Recover the vehicle if a collision or physics glitch throws it away
+    // from the circuit; this also prevents the follow camera staring at the sky.
+    const safePosition = rb.translation();
+    if (safePosition.y > 3 || safePosition.y < -3
+      || Math.abs(safePosition.x) > 240 || Math.abs(safePosition.z) > 220) {
+      rb.setTranslation({ x: 0, y: 0.2, z: 0 }, true);
+      rb.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      rb.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      cameraInitialized.current = false;
+    }
+
     rb.setAngularDamping(2.2);
-    onTelemetry(Math.abs(forwardSpeed) * 3.6);
+    const stableVelocity = rb.linvel();
+    onTelemetry(Math.min(VEHICLE.maxForwardSpeed, Math.hypot(stableVelocity.x, stableVelocity.z)) * 3.6);
 
     // Camera offset is rotated by the car's heading, so it stays behind the Civic
     // as it drives around bends instead of remaining behind in world-space.
