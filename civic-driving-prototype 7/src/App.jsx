@@ -1,4 +1,4 @@
-import React, { Suspense, useState } from 'react';
+import React, { Suspense, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Environment, Html, PerspectiveCamera } from '@react-three/drei';
 import { Physics } from '@react-three/rapier';
@@ -46,21 +46,20 @@ export default function App() {
   const [rivalLap, setRivalLap] = useState(1);
   const [raceStatus, setRaceStatus] = useState('racing');
   const [raceKey, setRaceKey] = useState(0);
+  const raceStatusRef = useRef('racing');
   const raceActive = raceStatus === 'racing';
   const completeLap = racer => {
+    if (raceStatusRef.current !== 'racing') return;
     if (racer === 'player') {
-      setPlayerLap(current => {
-        if (current >= 3) { setRaceStatus(status => status === 'racing' ? 'won' : status); return 3; }
-        return current + 1;
-      });
+      if (playerLap >= 3) { raceStatusRef.current = 'won'; setRaceStatus('won'); }
+      else setPlayerLap(playerLap + 1);
     } else {
-      setRivalLap(current => {
-        if (current >= 3) { setRaceStatus(status => status === 'racing' ? 'lost' : status); return 3; }
-        return current + 1;
-      });
+      if (rivalLap >= 3) { raceStatusRef.current = 'lost'; setRaceStatus('lost'); }
+      else setRivalLap(rivalLap + 1);
     }
   };
   const restartRace = () => {
+    raceStatusRef.current = 'racing';
     setPlayerLap(1); setRivalLap(1); setRaceStatus('racing'); setRaceKey(key => key + 1);
   };
 
