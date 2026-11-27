@@ -51,7 +51,7 @@ function createWheelRig(model) {
   return rig;
 }
 
-export default function Civic({ keys, onTelemetry }) {
+export default function Civic({ keys, onTelemetry, cameraMode = 'bumper' }) {
   const body = useRef();
   const visual = useRef();
   const wheelSpin = useRef(0);
@@ -119,15 +119,14 @@ export default function Civic({ keys, onTelemetry }) {
 
     const steeringInput = left - right;
     steer.current = THREE.MathUtils.damp(steer.current, steeringInput, VEHICLE.steeringDamping, dt);
-    const steeringAtSpeed = THREE.MathUtils.clamp(Math.abs(forwardSpeed) / 3.5, 0, 1);
-    rb.applyTorqueImpulse({
-      x: 0,
-      y: steer.current * steeringAtSpeed * Math.sign(forwardSpeed || 1)
-        * VEHICLE.steeringTorque * dt,
-      z: 0
-    }, true);
+    const speedRatioForSteering = THREE.MathUtils.clamp(Math.abs(forwardSpeed) / VEHICLE.maxForwardSpeed, 0, 1);
+    const steeringAuthority = THREE.MathUtils.lerp(1, VEHICLE.highSpeedSteering, speedRatioForSteering);
+    const steeringAtSpeed = THREE.MathUtils.clamp(Math.abs(forwardSpeed) / 4, 0, 1);
+    const yawImpulse = steer.current * steeringAtSpeed * steeringAuthority
+      * Math.sign(forwardSpeed || 1) * VEHICLE.steeringTorque * dt;
+    rb.applyTorqueImpulse({ x: 0, y: yawImpulse, z: 0 }, true);
 
-    const steeringAngle = steer.current * VEHICLE.frontWheelMaxAngle;
+    const steeringAngle = steer.current * VEHICLE.frontWheelMaxAngle * steeringAuthority;
     if (wheelRig.frontLeft) wheelRig.frontLeft.steer.rotation.y = steeringAngle;
     if (wheelRig.frontRight) wheelRig.frontRight.steer.rotation.y = steeringAngle;
 
@@ -208,17 +207,23 @@ export default function Civic({ keys, onTelemetry }) {
     // as it drives around bends instead of remaining behind in world-space.
     if (visual.current) {
       const position = rb.translation();
-      const cameraOffset = new THREE.Vector3(0, VEHICLE.cameraHeight, -VEHICLE.cameraDistance)
-        .applyQuaternion(orientation);
+      const cockpitMode = cameraMode === 'cockpit';
+      const cameraOffset = new THREE.Vector3(
+        0,
+        cockpitMode ? VEHICLE.cockpitCameraHeight : VEHICLE.cameraHeight,
+        cockpitMode ? VEHICLE.cockpitCameraForward : -VEHICLE.cameraDistance
+      ).applyQuaternion(orientation);
       const desiredCamera = new THREE.Vector3(position.x, position.y, position.z).add(cameraOffset);
-      const desiredLookAt = new THREE.Vector3(position.x, position.y + 0.8, position.z)
-        .addScaledVector(forward.current, VEHICLE.cameraLookAhead);
+      const desiredLookAt = new THREE.Vector3(position.x, position.y + (cockpitMode ? 0.05 : 0.65), position.z)
+        .addScaledVector(forward.current, cockpitMode ? VEHICLE.cockpitLookAhead : VEHICLE.cameraLookAhead);
 
       if (!cameraInitialized.current) {
         cameraPosition.current.copy(desiredCamera);
         cameraLookAt.current.copy(desiredLookAt);
         cameraInitialized.current = true;
       }
+      // Keep the bumper camera locked tightly to the car; cockpit view is fixed
+      // to the driver's eye point as well, with no world-space drift.
       cameraPosition.current.lerp(desiredCamera, 1 - Math.exp(-VEHICLE.cameraFollowSpeed * dt));
       cameraLookAt.current.lerp(desiredLookAt, 1 - Math.exp(-VEHICLE.cameraLookSpeed * dt));
       state.camera.position.copy(cameraPosition.current);
@@ -227,7 +232,8 @@ export default function Civic({ keys, onTelemetry }) {
       // A little speed-sensitive FOV gives a stronger sense of acceleration
       // without adding camera shake or artificial movement to the car.
       const speedRatio = THREE.MathUtils.clamp(Math.abs(forwardSpeed) / VEHICLE.maxForwardSpeed, 0, 1);
-      const targetFov = THREE.MathUtils.lerp(VEHICLE.cameraBaseFov, VEHICLE.cameraFastFov, speedRatio);
+      const targetFov = cockpitMode ? VEHICLE.cockpitFov
+        : THREE.MathUtils.lerp(VEHICLE.cameraBaseFov, VEHICLE.cameraFastFov, speedRatio);
       cameraFov.current = THREE.MathUtils.damp(cameraFov.current, targetFov, VEHICLE.cameraFovDamping, dt);
       if (state.camera.isPerspectiveCamera) {
         state.camera.fov = cameraFov.current;
