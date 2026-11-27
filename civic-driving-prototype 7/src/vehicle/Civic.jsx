@@ -13,10 +13,6 @@ const WHEEL_SIDE = {
   rearRight: 'RR'
 };
 
-/**
- * Builds a pivot at each tyre's actual centre and moves the wheel-related
- * model objects under it. Object3D.attach preserves the original transforms.
- */
 function createWheelRig(model) {
   model.updateMatrixWorld(true);
   const productRoot = model.getObjectByName('Product1') || model;
@@ -32,7 +28,6 @@ function createWheelRig(model) {
     const bounds = new THREE.Box3().setFromObject(tyre);
     const worldCenter = bounds.getCenter(new THREE.Vector3());
     const localCenter = productRoot.worldToLocal(worldCenter.clone());
-
     const pivot = new THREE.Group();
     pivot.name = `wheel-pivot-${suffix}`;
     pivot.position.copy(localCenter);
@@ -43,7 +38,6 @@ function createWheelRig(model) {
       if (child === pivot) return false;
       return WHEEL_PART_PATTERN.test(child.name) && child.name.toUpperCase().includes(suffix);
     });
-
     parts.forEach(part => pivot.attach(part));
     pivot.userData.wheelSide = suffix;
     rig[key] = pivot;
@@ -63,6 +57,23 @@ export default function Civic({ keys, onTelemetry }) {
   const forward = useRef(new THREE.Vector3());
   const velocity = useRef(new THREE.Vector3());
   const steer = useRef(0);
+  const previousForwardSpeed = useRef(0);
+  const suspension = useRef({
+    heave: 0, heaveVelocity: 0,
+    pitch: 0, pitchVelocity: 0,
+    roll: 0, rollVelocity: 0,
+    wheel: {}
+  });
+  const wheelBasePositions = useMemo(() => {
+    const positions = {};
+    for (const [key, pivot] of Object.entries(wheelRig)) {
+      positions[key] = pivot.position.clone();
+    }
+    return positions;
+  }, [wheelRig]);
+  const cameraPosition = useRef(new THREE.Vector3());
+  const cameraLookAt = useRef(new THREE.Vector3());
+  const cameraInitialized = useRef(false);
 
   useFrame((state, delta) => {
     if (!body.current) return;
@@ -96,15 +107,8 @@ export default function Civic({ keys, onTelemetry }) {
       z: -velocity.current.z * drag * dt
     }, true);
 
-    // Reverse the previous steering sign so A/left turns left and D/right turns right.
     const steeringInput = left - right;
-    steer.current = THREE.MathUtils.damp(
-      steer.current,
-      steeringInput,
-      VEHICLE.steeringDamping,
-      dt
-    );
-    // Steering builds more gradually with speed for small, predictable inputs.
+    steer.current = THREE.MathUtils.damp(steer.current, steeringInput, VEHICLE.steeringDamping, dt);
     const steeringAtSpeed = THREE.MathUtils.clamp(Math.abs(forwardSpeed) / 7, 0, 1);
     rb.applyTorqueImpulse({
       x: 0,
@@ -113,7 +117,6 @@ export default function Civic({ keys, onTelemetry }) {
       z: 0
     }, true);
 
-    // Front wheels follow the corrected steering direction; all wheels roll with speed.
     const steeringAngle = steer.current * VEHICLE.frontWheelMaxAngle;
     if (wheelRig.frontLeft) wheelRig.frontLeft.rotation.y = steeringAngle;
     if (wheelRig.frontRight) wheelRig.frontRight.rotation.y = steeringAngle;
@@ -123,14 +126,93 @@ export default function Civic({ keys, onTelemetry }) {
       if (wheel) wheel.rotation.x = wheelSpin.current;
     }
 
+    // Spring-damper suspension: each corner gets its own road input and travel.
+    // The chassis reacts to braking/acceleration and cornering with subtle pitch and roll.
+    const distanceStep = Math.abs(forwardSpeed) * dt;
+    const distance = wheelSpin.current * VEHICLE.wheelRadius;
+    const cornerKeys = ['frontLeft', 'frontRight', 'rearLeft', 'rearRight'];
+    let averageTravel = 0;
+    const suspensionState = suspension.current;
+    for (let i = 0; i < cornerKeys.length; i++) {
+      const key = cornerKeys[i];
+      const phase = [0, 1.7, 3.1, 4.6][i];
+      const roadBump = Math.sin(distance * 0.72 + phase) * 0.012
+        + Math.sin(distance * 1.85 + phase * 1.3) * 0.004;
+      const target = THREE.MathUtils.clamp(roadBump, -VEHICLE.suspensionTravel, VEHICLE.suspensionTravel);
+      const stateAtWheel = suspensionState.wheel[key] || { offset: 0, velocity: 0 };
+      const springForce = (target - stateAtWheel.offset) * VEHICLE.suspensionSpring;
+      const damperForce = stateAtWheel.velocity * VEHICLE.suspensionDamping;
+      stateAtWheel.velocity += (springForce - damperForce) * dt;
+      stateAtWheel.offset += stateAtWheel.velocity * dt;
+      stateAtWheel.offset = THREE.MathUtils.clamp(
+        stateAtWheel.offset, -VEHICLE.suspensionTravel, VEHICLE.suspensionTravel
+      );
+      suspensionState.wheel[key] = stateAtWheel;
+      averageTravel += stateAtWheel.offset / 4;
+
+      const pivot = wheelRig[key];
+      const base = wheelBasePositions[key];
+      if (pivot && base) {
+        // Wheel model coordinates are scaled down to metres by modelScale.
+        pivot.position.y = base.y + stateAtWheel.offset / VEHICLE.modelScale;
+      }
+    }
+
+    const longitudinalAcceleration = (forwardSpeed - previousForwardSpeed.current) / Math.max(dt, 0.001);
+    previousForwardSpeed.current = forwardSpeed;
+    const pitchTarget = THREE.MathUtils.clamp(
+      -longitudinalAcceleration * VEHICLE.suspensionPitchResponse, -0.055, 0.055
+    );
+    const lateralAcceleration = steer.current * forwardSpeed * forwardSpeed * 0.012;
+    const rollTarget = THREE.MathUtils.clamp(
+      -lateralAcceleration * VEHICLE.suspensionRollResponse, -0.065, 0.065
+    );
+
+    const springStep = (value, velocityValue, target, stiffness, damping) => {
+      const acceleration = (target - value) * stiffness - velocityValue * damping;
+      velocityValue += acceleration * dt;
+      value += velocityValue * dt;
+      return [value, velocityValue];
+    };
+    [suspensionState.heave, suspensionState.heaveVelocity] = springStep(
+      suspensionState.heave, suspensionState.heaveVelocity, averageTravel,
+      VEHICLE.suspensionSpring, VEHICLE.suspensionDamping
+    );
+    [suspensionState.pitch, suspensionState.pitchVelocity] = springStep(
+      suspensionState.pitch, suspensionState.pitchVelocity, pitchTarget, 22, 7
+    );
+    [suspensionState.roll, suspensionState.rollVelocity] = springStep(
+      suspensionState.roll, suspensionState.rollVelocity, rollTarget, 24, 8
+    );
+
+    if (visual.current) {
+      visual.current.position.y = VEHICLE.modelOffset[1] + suspensionState.heave;
+      visual.current.rotation.x = suspensionState.pitch;
+      visual.current.rotation.z = suspensionState.roll;
+    }
+
     rb.setAngularDamping(2.2);
     onTelemetry(Math.abs(forwardSpeed) * 3.6);
 
+    // Camera offset is rotated by the car's heading, so it stays behind the Civic
+    // as it drives around bends instead of remaining behind in world-space.
     if (visual.current) {
       const position = rb.translation();
-      const cameraTarget = new THREE.Vector3(position.x, position.y + 1.7, position.z - 6.8);
-      state.camera.position.lerp(cameraTarget, 1 - Math.exp(-4 * dt));
-      state.camera.lookAt(position.x, position.y + 0.65, position.z + 0.8);
+      const cameraOffset = new THREE.Vector3(0, VEHICLE.cameraHeight, -VEHICLE.cameraDistance)
+        .applyQuaternion(orientation);
+      const desiredCamera = new THREE.Vector3(position.x, position.y, position.z).add(cameraOffset);
+      const desiredLookAt = new THREE.Vector3(position.x, position.y + 0.8, position.z)
+        .addScaledVector(forward.current, VEHICLE.cameraLookAhead);
+
+      if (!cameraInitialized.current) {
+        cameraPosition.current.copy(desiredCamera);
+        cameraLookAt.current.copy(desiredLookAt);
+        cameraInitialized.current = true;
+      }
+      cameraPosition.current.lerp(desiredCamera, 1 - Math.exp(-VEHICLE.cameraFollowSpeed * dt));
+      cameraLookAt.current.lerp(desiredLookAt, 1 - Math.exp(-VEHICLE.cameraLookSpeed * dt));
+      state.camera.position.copy(cameraPosition.current);
+      state.camera.lookAt(cameraLookAt.current);
     }
   });
 
