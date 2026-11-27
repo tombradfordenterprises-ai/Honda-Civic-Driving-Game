@@ -74,6 +74,7 @@ export default function Civic({ keys, onTelemetry }) {
   const cameraPosition = useRef(new THREE.Vector3());
   const cameraLookAt = useRef(new THREE.Vector3());
   const cameraInitialized = useRef(false);
+  const cameraFov = useRef(64);
 
   useFrame((state, delta) => {
     if (!body.current) return;
@@ -136,8 +137,8 @@ export default function Civic({ keys, onTelemetry }) {
     for (let i = 0; i < cornerKeys.length; i++) {
       const key = cornerKeys[i];
       const phase = [0, 1.7, 3.1, 4.6][i];
-      const roadBump = Math.sin(distance * 0.72 + phase) * 0.012
-        + Math.sin(distance * 1.85 + phase * 1.3) * 0.004;
+      const roadBump = Math.sin(distance * 0.72 + phase) * 0.006
+        + Math.sin(distance * 1.85 + phase * 1.3) * 0.002;
       const target = THREE.MathUtils.clamp(roadBump, -VEHICLE.suspensionTravel, VEHICLE.suspensionTravel);
       const stateAtWheel = suspensionState.wheel[key] || { offset: 0, velocity: 0 };
       const springForce = (target - stateAtWheel.offset) * VEHICLE.suspensionSpring;
@@ -213,6 +214,16 @@ export default function Civic({ keys, onTelemetry }) {
       cameraLookAt.current.lerp(desiredLookAt, 1 - Math.exp(-VEHICLE.cameraLookSpeed * dt));
       state.camera.position.copy(cameraPosition.current);
       state.camera.lookAt(cameraLookAt.current);
+
+      // A little speed-sensitive FOV gives a stronger sense of acceleration
+      // without adding camera shake or artificial movement to the car.
+      const speedRatio = THREE.MathUtils.clamp(Math.abs(forwardSpeed) / VEHICLE.maxForwardSpeed, 0, 1);
+      const targetFov = THREE.MathUtils.lerp(VEHICLE.cameraBaseFov, VEHICLE.cameraFastFov, speedRatio);
+      cameraFov.current = THREE.MathUtils.damp(cameraFov.current, targetFov, VEHICLE.cameraFovDamping, dt);
+      if (state.camera.isPerspectiveCamera) {
+        state.camera.fov = cameraFov.current;
+        state.camera.updateProjectionMatrix();
+      }
     }
   });
 
