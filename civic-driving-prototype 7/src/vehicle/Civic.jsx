@@ -186,8 +186,8 @@ export default function Civic({ keys, onTelemetry, cameraMode = 'bumper', onLap,
     for (let i = 0; i < cornerKeys.length; i++) {
       const key = cornerKeys[i];
       const phase = [0, 1.7, 3.1, 4.6][i];
-      const roadBump = Math.sin(distance * 0.72 + phase) * 0.006
-        + Math.sin(distance * 1.85 + phase * 1.3) * 0.002;
+      const roadBump = Math.sin(distance * 0.72 + phase) * 0.0028
+        + Math.sin(distance * 1.85 + phase * 1.3) * 0.001;
       const target = THREE.MathUtils.clamp(roadBump, -VEHICLE.suspensionTravel, VEHICLE.suspensionTravel);
       const stateAtWheel = suspensionState.wheel[key] || { offset: 0, velocity: 0 };
       const springForce = (target - stateAtWheel.offset) * VEHICLE.suspensionSpring;
