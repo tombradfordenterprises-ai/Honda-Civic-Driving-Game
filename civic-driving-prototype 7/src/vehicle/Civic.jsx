@@ -122,7 +122,12 @@ export default function Civic({ keys, onTelemetry, cameraMode = 'bumper', onLap,
 
     const rotation = rb.rotation();
     const orientation = new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w);
+    // Keep the driving direction and chase camera level with the track.
+    // Physics contact rotations must never pitch the camera up into the sky.
     forward.current.set(0, 0, 1).applyQuaternion(orientation);
+    forward.current.y = 0;
+    if (forward.current.lengthSq() < 0.0001) forward.current.set(0, 0, 1);
+    forward.current.normalize();
     velocity.current.copy(rb.linvel());
     const forwardSpeed = velocity.current.dot(forward.current);
 
@@ -249,12 +254,9 @@ export default function Civic({ keys, onTelemetry, cameraMode = 'bumper', onLap,
     if (visual.current) {
       const position = rb.translation();
       const cockpitMode = cameraMode === 'cockpit';
-      const cameraOffset = new THREE.Vector3(
-        0,
-        cockpitMode ? VEHICLE.cockpitCameraHeight : VEHICLE.cameraHeight,
-        cockpitMode ? VEHICLE.cockpitCameraForward : -VEHICLE.cameraDistance
-      ).applyQuaternion(orientation);
-      const desiredCamera = new THREE.Vector3(position.x, position.y, position.z).add(cameraOffset);
+      const cameraHeight = cockpitMode ? VEHICLE.cockpitCameraHeight : VEHICLE.cameraHeight;
+      const desiredCamera = new THREE.Vector3(position.x, position.y + cameraHeight, position.z)
+        .addScaledVector(forward.current, cockpitMode ? VEHICLE.cockpitCameraForward : -VEHICLE.cameraDistance);
       const desiredLookAt = new THREE.Vector3(position.x, position.y + (cockpitMode ? 0.05 : 0.65), position.z)
         .addScaledVector(forward.current, cockpitMode ? VEHICLE.cockpitLookAhead : VEHICLE.cameraLookAhead);
 
@@ -268,6 +270,7 @@ export default function Civic({ keys, onTelemetry, cameraMode = 'bumper', onLap,
       cameraPosition.current.lerp(desiredCamera, 1 - Math.exp(-VEHICLE.cameraFollowSpeed * dt));
       cameraLookAt.current.lerp(desiredLookAt, 1 - Math.exp(-VEHICLE.cameraLookSpeed * dt));
       state.camera.position.copy(cameraPosition.current);
+      state.camera.up.set(0, 1, 0);
       state.camera.lookAt(cameraLookAt.current);
 
       // A little speed-sensitive FOV gives a stronger sense of acceleration
