@@ -171,7 +171,7 @@ export default function Track() {
     {/* Red and off-white curb blocks through the tighter corners */}
     {curbs.map(({ key, point, angle, color }) => (
       <mesh key={key} position={[point.x, -0.345, point.z]} rotation={[0, angle, 0]} receiveShadow>
-        <boxGeometry args={[2.8, 0.12, 0.7]} />
+        <boxGeometry args={[0.7, 0.12, 2.8]} />
         <meshStandardMaterial color={color} roughness={0.86} />
       </mesh>
     ))}
@@ -180,11 +180,11 @@ export default function Track() {
     {guardrails.map(({ key, point, angle }) => (
       <group key={key} position={[point.x, 0, point.z]} rotation={[0, angle, 0]}>
         <mesh position={[0, 0.62, 0]} castShadow>
-          <boxGeometry args={[5.2, 0.16, 0.18]} />
+          <boxGeometry args={[0.18, 0.16, 5.2]} />
           <primitive object={railMaterial} attach="material" />
         </mesh>
-        {[-2.1, 0, 2.1].map(x => (
-          <mesh key={x} position={[x, 0.3, 0]} castShadow>
+        {[-2.1, 0, 2.1].map(z => (
+          <mesh key={z} position={[0, 0.3, z]} castShadow>
             <boxGeometry args={[0.13, 0.62, 0.13]} />
             <primitive object={postMaterial} attach="material" />
           </mesh>
