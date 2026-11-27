@@ -161,7 +161,7 @@ export default function Civic({ keys, onTelemetry, cameraMode = 'bumper', onLap,
       THREE.MathUtils.clamp(arcadeSpeed.current / VEHICLE.maxForwardSpeed, 0, 1)
     );
     const steeringAtSpeed = THREE.MathUtils.clamp(arcadeSpeed.current / 3, 0, 1);
-    heading.current -= steer.current * steeringAtSpeed * steeringAuthority * 1.65 * dt;
+    heading.current += steer.current * steeringAtSpeed * steeringAuthority * 1.65 * dt;
     const headingRotation = new THREE.Quaternion().setFromAxisAngle(
       new THREE.Vector3(0, 1, 0), heading.current
     );
