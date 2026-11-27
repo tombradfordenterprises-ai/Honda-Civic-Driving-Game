@@ -44,7 +44,6 @@ function createWheelRig(model) {
       return WHEEL_PART_PATTERN.test(child.name) && child.name.toUpperCase().includes(suffix);
     });
 
-    // Move tyre, rim, bolts, hub cap and brake pieces together.
     parts.forEach(part => pivot.attach(part));
     pivot.userData.wheelSide = suffix;
     rig[key] = pivot;
@@ -97,9 +96,16 @@ export default function Civic({ keys, onTelemetry }) {
       z: -velocity.current.z * drag * dt
     }, true);
 
-    const steeringInput = right - left;
-    steer.current = THREE.MathUtils.damp(steer.current, steeringInput, 2.6, dt);
-    const steeringAtSpeed = THREE.MathUtils.clamp(Math.abs(forwardSpeed) / 3, 0, 1);
+    // Reverse the previous steering sign so A/left turns left and D/right turns right.
+    const steeringInput = left - right;
+    steer.current = THREE.MathUtils.damp(
+      steer.current,
+      steeringInput,
+      VEHICLE.steeringDamping,
+      dt
+    );
+    // Steering builds more gradually with speed for small, predictable inputs.
+    const steeringAtSpeed = THREE.MathUtils.clamp(Math.abs(forwardSpeed) / 7, 0, 1);
     rb.applyTorqueImpulse({
       x: 0,
       y: steer.current * steeringAtSpeed * Math.sign(forwardSpeed || 1)
@@ -107,7 +113,7 @@ export default function Civic({ keys, onTelemetry }) {
       z: 0
     }, true);
 
-    // Visually steer only the front wheels; all four wheels roll with vehicle speed.
+    // Front wheels follow the corrected steering direction; all wheels roll with speed.
     const steeringAngle = steer.current * VEHICLE.frontWheelMaxAngle;
     if (wheelRig.frontLeft) wheelRig.frontLeft.rotation.y = steeringAngle;
     if (wheelRig.frontRight) wheelRig.frontRight.rotation.y = steeringAngle;
