@@ -30,18 +30,21 @@ function createWheelRig(model) {
     const worldCenter = bounds.getCenter(new THREE.Vector3());
     const localCenter = productRoot.worldToLocal(worldCenter.clone());
     const pivot = new THREE.Group();
-    pivot.name = `wheel-pivot-${suffix}`;
+    pivot.name = `wheel-steer-pivot-${suffix}`;
     pivot.position.copy(localCenter);
     productRoot.add(pivot);
+    const spinPivot = new THREE.Group();
+    spinPivot.name = `wheel-spin-pivot-${suffix}`;
+    pivot.add(spinPivot);
     productRoot.updateMatrixWorld(true);
 
     const parts = productRoot.children.filter(child => {
       if (child === pivot) return false;
       return WHEEL_PART_PATTERN.test(child.name) && child.name.toUpperCase().includes(suffix);
     });
-    parts.forEach(part => pivot.attach(part));
+    parts.forEach(part => spinPivot.attach(part));
     pivot.userData.wheelSide = suffix;
-    rig[key] = pivot;
+    rig[key] = { steer: pivot, spin: spinPivot };
   }
 
   model.updateMatrixWorld(true);
@@ -69,7 +72,7 @@ export default function Civic({ keys, onTelemetry }) {
   const wheelBasePositions = useMemo(() => {
     const positions = {};
     for (const [key, pivot] of Object.entries(wheelRig)) {
-      positions[key] = pivot.position.clone();
+      positions[key] = pivot.steer.position.clone();
     }
     return positions;
   }, [wheelRig]);
@@ -125,12 +128,12 @@ export default function Civic({ keys, onTelemetry }) {
     }, true);
 
     const steeringAngle = steer.current * VEHICLE.frontWheelMaxAngle;
-    if (wheelRig.frontLeft) wheelRig.frontLeft.rotation.y = steeringAngle;
-    if (wheelRig.frontRight) wheelRig.frontRight.rotation.y = steeringAngle;
+    if (wheelRig.frontLeft) wheelRig.frontLeft.steer.rotation.y = steeringAngle;
+    if (wheelRig.frontRight) wheelRig.frontRight.steer.rotation.y = steeringAngle;
 
     wheelSpin.current += (forwardSpeed / VEHICLE.wheelRadius) * dt;
     for (const wheel of Object.values(wheelRig)) {
-      if (wheel) wheel.rotation.x = wheelSpin.current;
+      if (wheel) wheel.spin.rotation.x = wheelSpin.current;
     }
 
     // Spring-damper suspension: each corner gets its own road input and travel.
@@ -157,11 +160,11 @@ export default function Civic({ keys, onTelemetry }) {
       suspensionState.wheel[key] = stateAtWheel;
       averageTravel += stateAtWheel.offset / 4;
 
-      const pivot = wheelRig[key];
+      const wheel = wheelRig[key];
       const base = wheelBasePositions[key];
-      if (pivot && base) {
+      if (wheel && base) {
         // Wheel model coordinates are scaled down to metres by modelScale.
-        pivot.position.y = base.y + stateAtWheel.offset / VEHICLE.modelScale;
+        wheel.steer.position.y = base.y + stateAtWheel.offset / VEHICLE.modelScale;
       }
     }
 
