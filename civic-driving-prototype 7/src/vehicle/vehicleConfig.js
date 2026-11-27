@@ -21,18 +21,18 @@ export const VEHICLE = {
   wheelRadius: 0.31,
 
   // Visual spring/damper suspension tuning (metres and response rates).
-  suspensionTravel: 0.045,
-  suspensionSpring: 42,
-  suspensionDamping: 12,
-  suspensionPitchResponse: 0.0015,
-  suspensionRollResponse: 0.0012,
+  suspensionTravel: 0.032,
+  suspensionSpring: 52,
+  suspensionDamping: 18,
+  suspensionPitchResponse: 0.0009,
+  suspensionRollResponse: 0.00075,
 
   // Low, close bumper-style chase camera with speed-sensitive perspective.
-  cameraHeight: 0.98,
-  cameraDistance: 2.65,
-  cameraLookAhead: 10,
-  cameraFollowSpeed: 22,
-  cameraLookSpeed: 16,
+  cameraHeight: 1.18,
+  cameraDistance: 4.2,
+  cameraLookAhead: 12,
+  cameraFollowSpeed: 14,
+  cameraLookSpeed: 12,
   cockpitCameraHeight: 1.34,
   cockpitCameraForward: 0.42,
   cockpitLookAhead: 16,
