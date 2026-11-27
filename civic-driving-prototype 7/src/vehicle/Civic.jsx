@@ -173,9 +173,10 @@ export default function Civic({ keys, onTelemetry, cameraMode = 'bumper', onLap,
     // oscillation as the car accelerated, even with small steering inputs.
     const desiredYawRate = steer.current * steeringAtSpeed * steeringAuthority
       * Math.sign(forwardSpeed || 1) * 1.25;
-    const currentYawRate = rb.angvel().y;
-    const stableYawRate = THREE.MathUtils.damp(currentYawRate, desiredYawRate, 7, dt);
-    rb.setAngvel({ x: 0, y: stableYawRate, z: 0 }, true);
+    // Apply only the yaw rate requested by the steering input.
+    // Do not carry residual yaw from contact impulses into the next frame:
+    // that feedback was making the car weave even with no steering pressed.
+    rb.setAngvel({ x: 0, y: desiredYawRate, z: 0 }, true);
 
     const steeringAngle = steer.current * VEHICLE.frontWheelMaxAngle * steeringAuthority;
     if (wheelRig.frontLeft) wheelRig.frontLeft.steer.rotation.y = steeringAngle;
