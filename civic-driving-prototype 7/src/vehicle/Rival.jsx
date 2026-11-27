@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { VEHICLE } from './vehicleConfig.js';
 import { createTrackCurve } from '../world/trackPath.js';
 
-export default function Rival() {
+export default function Rival({ onLap, raceActive = true }) {
   const body = useRef();
   const gltf = useGLTF(VEHICLE.model);
   const model = useMemo(() => gltf.scene.clone(true), [gltf.scene]);
@@ -17,8 +17,11 @@ export default function Rival() {
 
   useFrame((_, delta) => {
     if (!body.current) return;
+    if (!raceActive) return;
     const dt = Math.min(delta, 0.04);
-    progress.current = (progress.current + (speed * dt) / curveLength) % 1;
+    const nextProgress = progress.current + (speed * dt) / curveLength;
+    if (nextProgress >= 1) onLap?.();
+    progress.current = nextProgress % 1;
     const point = curve.getPointAt(progress.current);
     const tangent = curve.getTangentAt(progress.current).normalize();
     const yaw = Math.atan2(tangent.x, tangent.z);
