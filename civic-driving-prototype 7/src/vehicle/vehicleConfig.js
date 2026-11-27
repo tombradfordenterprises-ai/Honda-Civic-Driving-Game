@@ -8,8 +8,8 @@ export const VEHICLE = {
   brakeForce: 1500,
   rollingResistance: 2,
   handbrakeDrag: 11,
-  steeringDamping: 2.6,
-  steeringTorque: 260,
-  frontWheelMaxAngle: 0.38,
+  steeringDamping: 1.8,
+  steeringTorque: 100,
+  frontWheelMaxAngle: 0.18,
   wheelRadius: 0.31
 };
