@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function HUD({ speed }) {
+export default function HUD({ speed, cameraMode, onToggleCamera }) {
   return (
     <>
       <div className="topbar">
@@ -10,6 +10,9 @@ export default function HUD({ speed }) {
         </div>
         <div className="speed"><strong>{speed}</strong><span>KM/H</span></div>
       </div>
+      <button className="camera-toggle" onClick={onToggleCamera}>
+        VIEW: {cameraMode === 'bumper' ? 'BUMPER' : 'COCKPIT'} · SWITCH
+      </button>
       <div className="help">
         <b>CONTROLS</b>
         <span>W / ↑ Accelerate</span>
