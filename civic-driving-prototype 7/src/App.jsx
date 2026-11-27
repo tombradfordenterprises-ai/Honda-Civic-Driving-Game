@@ -8,7 +8,7 @@ import Rival from './vehicle/Rival.jsx';
 import Track from './world/Track.jsx';
 import HUD from './ui/HUD.jsx';
 
-function Scene({ keys, onTelemetry, cameraMode }) {
+function Scene({ keys, onTelemetry, cameraMode, onPlayerLap, onRivalLap, raceActive }) {
   return (
     <Canvas shadows dpr={[1, 1.7]} gl={{ antialias: true }}>
       <PerspectiveCamera makeDefault position={[0, 4, -8]} fov={55} />
@@ -29,8 +29,8 @@ function Scene({ keys, onTelemetry, cameraMode }) {
       <Suspense fallback={<Html center><div className="loading">Loading Civic model…</div></Html>}>
         <Physics gravity={[0, -9.81, 0]}>
           <Track />
-          <Civic keys={keys} onTelemetry={onTelemetry} cameraMode={cameraMode} />
-          <Rival />
+          <Civic keys={keys} onTelemetry={onTelemetry} cameraMode={cameraMode} onLap={onPlayerLap} raceActive={raceActive} />
+          <Rival onLap={onRivalLap} raceActive={raceActive} />
         </Physics>
         <Environment preset="park" />
       </Suspense>
@@ -42,11 +42,34 @@ export default function App() {
   const keys = useKeys();
   const [speed, setSpeed] = useState(0);
   const [cameraMode, setCameraMode] = useState('bumper');
+  const [playerLap, setPlayerLap] = useState(1);
+  const [rivalLap, setRivalLap] = useState(1);
+  const [raceStatus, setRaceStatus] = useState('racing');
+  const [raceKey, setRaceKey] = useState(0);
+  const raceActive = raceStatus === 'racing';
+  const completeLap = racer => {
+    if (racer === 'player') {
+      setPlayerLap(current => {
+        if (current >= 3) { setRaceStatus(status => status === 'racing' ? 'won' : status); return 3; }
+        return current + 1;
+      });
+    } else {
+      setRivalLap(current => {
+        if (current >= 3) { setRaceStatus(status => status === 'racing' ? 'lost' : status); return 3; }
+        return current + 1;
+      });
+    }
+  };
+  const restartRace = () => {
+    setPlayerLap(1); setRivalLap(1); setRaceStatus('racing'); setRaceKey(key => key + 1);
+  };
 
   return (
     <main>
-      <Scene keys={keys} onTelemetry={value => setSpeed(Math.round(value))} cameraMode={cameraMode} />
-      <HUD speed={speed} cameraMode={cameraMode} onToggleCamera={() => setCameraMode(mode => mode === 'bumper' ? 'cockpit' : 'bumper')} />
+      <Scene key={raceKey} keys={keys} onTelemetry={value => setSpeed(Math.round(value))} cameraMode={cameraMode}
+        onPlayerLap={() => completeLap('player')} onRivalLap={() => completeLap('rival')} raceActive={raceActive} />
+      <HUD speed={speed} cameraMode={cameraMode} onToggleCamera={() => setCameraMode(mode => mode === 'bumper' ? 'cockpit' : 'bumper')}
+        playerLap={playerLap} rivalLap={rivalLap} raceStatus={raceStatus} onRestart={restartRace} />
     </main>
   );
 }
