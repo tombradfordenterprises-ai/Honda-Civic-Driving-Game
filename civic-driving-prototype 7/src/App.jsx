@@ -8,7 +8,7 @@ import Rival from './vehicle/Rival.jsx';
 import Track from './world/Track.jsx';
 import HUD from './ui/HUD.jsx';
 
-function Scene({ keys, onTelemetry }) {
+function Scene({ keys, onTelemetry, cameraMode }) {
   return (
     <Canvas shadows dpr={[1, 1.7]} gl={{ antialias: true }}>
       <PerspectiveCamera makeDefault position={[0, 4, -8]} fov={55} />
@@ -29,7 +29,7 @@ function Scene({ keys, onTelemetry }) {
       <Suspense fallback={<Html center><div className="loading">Loading Civic model…</div></Html>}>
         <Physics gravity={[0, -9.81, 0]}>
           <Track />
-          <Civic keys={keys} onTelemetry={onTelemetry} />
+          <Civic keys={keys} onTelemetry={onTelemetry} cameraMode={cameraMode} />
           <Rival />
         </Physics>
         <Environment preset="park" />
@@ -41,11 +41,12 @@ function Scene({ keys, onTelemetry }) {
 export default function App() {
   const keys = useKeys();
   const [speed, setSpeed] = useState(0);
+  const [cameraMode, setCameraMode] = useState('bumper');
 
   return (
     <main>
-      <Scene keys={keys} onTelemetry={value => setSpeed(Math.round(value))} />
-      <HUD speed={speed} />
+      <Scene keys={keys} onTelemetry={value => setSpeed(Math.round(value))} cameraMode={cameraMode} />
+      <HUD speed={speed} cameraMode={cameraMode} onToggleCamera={() => setCameraMode(mode => mode === 'bumper' ? 'cockpit' : 'bumper')} />
     </main>
   );
 }
