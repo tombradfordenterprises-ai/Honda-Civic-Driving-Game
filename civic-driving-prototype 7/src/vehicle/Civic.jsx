@@ -90,6 +90,9 @@ export default function Civic({ keys, onTelemetry, cameraMode = 'bumper', onLap,
   const forward = useRef(new THREE.Vector3());
   const velocity = useRef(new THREE.Vector3());
   const steer = useRef(0);
+  const arcadeSpeed = useRef(0);
+  const heading = useRef(0);
+  const headingInitialized = useRef(false);
   const lastTrackProgress = useRef(null);
   const previousForwardSpeed = useRef(0);
   const suspension = useRef({
@@ -121,16 +124,15 @@ export default function Civic({ keys, onTelemetry, cameraMode = 'bumper', onLap,
     const handbrake = !!keys[' '];
 
     const rotation = rb.rotation();
-    const orientation = new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w);
-    // Keep the driving direction and chase camera level with the track.
-    // Physics contact rotations must never pitch the camera up into the sky.
-    forward.current.set(0, 0, 1).applyQuaternion(orientation);
-    forward.current.y = 0;
-    if (forward.current.lengthSq() < 0.0001) forward.current.set(0, 0, 1);
-    forward.current.normalize();
-    velocity.current.copy(rb.linvel());
-    const forwardSpeed = velocity.current.dot(forward.current);
+    if (!headingInitialized.current) {
+      heading.current = new THREE.Euler().setFromQuaternion(
+        new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w), 'YXZ'
+      ).y;
+      headingInitialized.current = true;
+    }
 
+    // Simple arcade driving: one forward speed and one heading angle.
+    // No sideways impulses, torque simulation, or tire-grip feedback loops.
     const positionNow = rb.translation();
     const trackProgress = getTrackProgress(trackCurve, positionNow.x, positionNow.z);
     if (raceActive && lastTrackProgress.current !== null
@@ -138,45 +140,39 @@ export default function Civic({ keys, onTelemetry, cameraMode = 'bumper', onLap,
     lastTrackProgress.current = trackProgress;
     const distanceFromTrack = distanceToTrack(trackCurve, positionNow.x, positionNow.z);
     const onGrass = distanceFromTrack > VEHICLE.roadHalfWidth;
-    const surfaceDriveMultiplier = onGrass ? VEHICLE.grassDriveMultiplier : 1;
-    const canAccelerate = forwardSpeed < VEHICLE.maxForwardSpeed * (onGrass ? VEHICLE.grassSpeedMultiplier : 1);
-    const driveForce = (throttle && canAccelerate ? VEHICLE.driveForce * surfaceDriveMultiplier : 0)
-      - brake * Math.sign(forwardSpeed || 1) * VEHICLE.brakeForce;
-    rb.applyImpulse({
-      x: forward.current.x * driveForce * dt,
-      y: 0,
-      z: forward.current.z * driveForce * dt
-    }, true);
-
-    const drag = handbrake ? VEHICLE.handbrakeDrag : VEHICLE.rollingResistance + (onGrass ? VEHICLE.grassDrag : 0);
-    rb.applyImpulse({
-      x: -velocity.current.x * drag * dt,
-      y: 0,
-      z: -velocity.current.z * drag * dt
-    }, true);
 
     const steeringInput = left - right;
     steer.current = THREE.MathUtils.damp(steer.current, steeringInput, VEHICLE.steeringDamping, dt);
-    const carRight = new THREE.Vector3(1, 0, 0).applyQuaternion(orientation);
-    const lateralSpeed = velocity.current.dot(carRight);
-    const grip = onGrass ? VEHICLE.grassLateralGrip : VEHICLE.lateralGrip;
-    rb.applyImpulse({
-      x: -carRight.x * lateralSpeed * grip * dt * VEHICLE.mass,
-      y: 0,
-      z: -carRight.z * lateralSpeed * grip * dt * VEHICLE.mass
+    const speedLimit = VEHICLE.maxForwardSpeed * (onGrass ? VEHICLE.grassSpeedMultiplier : 1);
+    const acceleration = throttle ? VEHICLE.driveForce / VEHICLE.mass : 0;
+    const braking = brake ? VEHICLE.brakeForce / VEHICLE.mass : 0;
+    arcadeSpeed.current += acceleration * dt;
+    if (brake) arcadeSpeed.current = Math.max(0, arcadeSpeed.current - braking * dt);
+    if (!throttle && !brake) {
+      const drag = handbrake ? VEHICLE.handbrakeDrag : VEHICLE.rollingResistance + (onGrass ? VEHICLE.grassDrag : 0);
+      arcadeSpeed.current = Math.max(0, arcadeSpeed.current - drag * dt);
+    }
+    arcadeSpeed.current = THREE.MathUtils.clamp(arcadeSpeed.current, 0, speedLimit);
+
+    const steeringAuthority = THREE.MathUtils.lerp(
+      1, VEHICLE.highSpeedSteering,
+      THREE.MathUtils.clamp(arcadeSpeed.current / VEHICLE.maxForwardSpeed, 0, 1)
+    );
+    const steeringAtSpeed = THREE.MathUtils.clamp(arcadeSpeed.current / 3, 0, 1);
+    heading.current -= steer.current * steeringAtSpeed * steeringAuthority * 1.65 * dt;
+    const headingRotation = new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(0, 1, 0), heading.current
+    );
+    rb.setRotation({ x: 0, y: headingRotation.y, z: 0, w: headingRotation.w }, true);
+
+    forward.current.set(0, 0, 1).applyQuaternion(headingRotation).normalize();
+    velocity.current.copy(rb.linvel());
+    rb.setLinvel({
+      x: forward.current.x * arcadeSpeed.current,
+      y: velocity.current.y,
+      z: forward.current.z * arcadeSpeed.current
     }, true);
-    const speedRatioForSteering = THREE.MathUtils.clamp(Math.abs(forwardSpeed) / VEHICLE.maxForwardSpeed, 0, 1);
-    const steeringAuthority = THREE.MathUtils.lerp(1, VEHICLE.highSpeedSteering, speedRatioForSteering);
-    const steeringAtSpeed = THREE.MathUtils.clamp(Math.abs(forwardSpeed) / 5, 0, 1);
-    // Use a damped target yaw rate instead of a raw torque impulse.
-    // Raw torque was exciting the chassis inertia and causing a left/right
-    // oscillation as the car accelerated, even with small steering inputs.
-    const desiredYawRate = steer.current * steeringAtSpeed * steeringAuthority
-      * Math.sign(forwardSpeed || 1) * 1.25;
-    // Apply only the yaw rate requested by the steering input.
-    // Do not carry residual yaw from contact impulses into the next frame:
-    // that feedback was making the car weave even with no steering pressed.
-    rb.setAngvel({ x: 0, y: desiredYawRate, z: 0 }, true);
+    const forwardSpeed = arcadeSpeed.current;
 
     const steeringAngle = steer.current * VEHICLE.frontWheelMaxAngle * steeringAuthority;
     if (wheelRig.frontLeft) wheelRig.frontLeft.steer.rotation.y = steeringAngle;
@@ -256,17 +252,14 @@ export default function Civic({ keys, onTelemetry, cameraMode = 'bumper', onLap,
     // sending the car to extreme speeds or launching it out of the scene.
     const safeVelocity = rb.linvel();
     const horizontalSpeed = Math.hypot(safeVelocity.x, safeVelocity.z);
-    const speedLimit = VEHICLE.maxForwardSpeed + 1.5;
-    if (horizontalSpeed > speedLimit) {
-      const scale = speedLimit / horizontalSpeed;
+    const safetySpeedLimit = VEHICLE.maxForwardSpeed + 1.5;
+    if (horizontalSpeed > safetySpeedLimit) {
+      const scale = safetySpeedLimit / horizontalSpeed;
       rb.setLinvel({ x: safeVelocity.x * scale, y: THREE.MathUtils.clamp(safeVelocity.y, -7, 7), z: safeVelocity.z * scale }, true);
     } else if (Math.abs(safeVelocity.y) > 7) {
       rb.setLinvel({ x: safeVelocity.x, y: Math.sign(safeVelocity.y) * 7, z: safeVelocity.z }, true);
     }
-    const safeAngular = rb.angvel();
-    if (Math.abs(safeAngular.y) > 2.8) {
-      rb.setAngvel({ x: 0, y: Math.sign(safeAngular.y) * 2.8, z: 0 }, true);
-    }
+    rb.setAngvel({ x: 0, y: 0, z: 0 }, true);
 
     // Recover the vehicle if a collision or physics glitch throws it away
     // from the circuit; this also prevents the follow camera staring at the sky.
