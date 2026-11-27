@@ -4,7 +4,7 @@ import { CuboidCollider, RigidBody } from '@react-three/rapier';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { VEHICLE } from './vehicleConfig.js';
-import { createTrackCurve, distanceToTrack } from '../world/trackPath.js';
+import { createTrackCurve, distanceToTrack, getTrackProgress } from '../world/trackPath.js';
 
 const WHEEL_PART_PATTERN = /^(guma_|rim_|rim_cap_|srouby_|uwu_disc|uwu_pad)/i;
 const WHEEL_SIDE = {
@@ -13,6 +13,30 @@ const WHEEL_SIDE = {
   rearLeft: 'LR',
   rearRight: 'RR'
 };
+
+function makeWindshieldTransparent(model) {
+  model.traverse(object => {
+    if (!object.isMesh) return;
+    let parent = object;
+    let hierarchy = '';
+    while (parent) { hierarchy += ` ${parent.name || ''}`; parent = parent.parent; }
+    if (!/window_windshield/i.test(hierarchy)) return;
+    const makeClear = material => {
+      const clear = material.clone();
+      clear.transparent = true;
+      clear.opacity = 0.07;
+      clear.depthWrite = false;
+      clear.roughness = 0.08;
+      clear.metalness = 0;
+      clear.side = THREE.DoubleSide;
+      clear.needsUpdate = true;
+      return clear;
+    };
+    object.material = Array.isArray(object.material)
+      ? object.material.map(makeClear)
+      : makeClear(object.material);
+  });
+}
 
 function createWheelRig(model) {
   model.updateMatrixWorld(true);
@@ -51,17 +75,22 @@ function createWheelRig(model) {
   return rig;
 }
 
-export default function Civic({ keys, onTelemetry, cameraMode = 'bumper' }) {
+export default function Civic({ keys, onTelemetry, cameraMode = 'bumper', onLap, raceActive = true }) {
   const body = useRef();
   const visual = useRef();
   const wheelSpin = useRef(0);
   const gltf = useGLTF(VEHICLE.model);
   const trackCurve = useMemo(() => createTrackCurve(), []);
-  const model = useMemo(() => gltf.scene.clone(true), [gltf.scene]);
+  const model = useMemo(() => {
+    const clone = gltf.scene.clone(true);
+    makeWindshieldTransparent(clone);
+    return clone;
+  }, [gltf.scene]);
   const wheelRig = useMemo(() => createWheelRig(model), [model]);
   const forward = useRef(new THREE.Vector3());
   const velocity = useRef(new THREE.Vector3());
   const steer = useRef(0);
+  const lastTrackProgress = useRef(null);
   const previousForwardSpeed = useRef(0);
   const suspension = useRef({
     heave: 0, heaveVelocity: 0,
@@ -85,10 +114,10 @@ export default function Civic({ keys, onTelemetry, cameraMode = 'bumper' }) {
     if (!body.current) return;
     const rb = body.current;
     const dt = Math.min(delta, 0.04);
-    const throttle = keys.w || keys.arrowup ? 1 : 0;
+    const throttle = raceActive && (keys.w || keys.arrowup) ? 1 : 0;
     const brake = keys.s || keys.arrowdown ? 1 : 0;
-    const left = keys.a || keys.arrowleft ? 1 : 0;
-    const right = keys.d || keys.arrowright ? 1 : 0;
+    const left = raceActive && (keys.a || keys.arrowleft) ? 1 : 0;
+    const right = raceActive && (keys.d || keys.arrowright) ? 1 : 0;
     const handbrake = !!keys[' '];
 
     const rotation = rb.rotation();
@@ -98,6 +127,10 @@ export default function Civic({ keys, onTelemetry, cameraMode = 'bumper' }) {
     const forwardSpeed = velocity.current.dot(forward.current);
 
     const positionNow = rb.translation();
+    const trackProgress = getTrackProgress(trackCurve, positionNow.x, positionNow.z);
+    if (raceActive && lastTrackProgress.current !== null
+      && lastTrackProgress.current > 0.92 && trackProgress < 0.08) onLap?.();
+    lastTrackProgress.current = trackProgress;
     const distanceFromTrack = distanceToTrack(trackCurve, positionNow.x, positionNow.z);
     const onGrass = distanceFromTrack > VEHICLE.roadHalfWidth;
     const surfaceDriveMultiplier = onGrass ? VEHICLE.grassDriveMultiplier : 1;
@@ -119,9 +152,17 @@ export default function Civic({ keys, onTelemetry, cameraMode = 'bumper' }) {
 
     const steeringInput = left - right;
     steer.current = THREE.MathUtils.damp(steer.current, steeringInput, VEHICLE.steeringDamping, dt);
+    const carRight = new THREE.Vector3(1, 0, 0).applyQuaternion(orientation);
+    const lateralSpeed = velocity.current.dot(carRight);
+    const grip = onGrass ? VEHICLE.grassLateralGrip : VEHICLE.lateralGrip;
+    rb.applyImpulse({
+      x: -carRight.x * lateralSpeed * grip * dt * VEHICLE.mass,
+      y: 0,
+      z: -carRight.z * lateralSpeed * grip * dt * VEHICLE.mass
+    }, true);
     const speedRatioForSteering = THREE.MathUtils.clamp(Math.abs(forwardSpeed) / VEHICLE.maxForwardSpeed, 0, 1);
     const steeringAuthority = THREE.MathUtils.lerp(1, VEHICLE.highSpeedSteering, speedRatioForSteering);
-    const steeringAtSpeed = THREE.MathUtils.clamp(Math.abs(forwardSpeed) / 4, 0, 1);
+    const steeringAtSpeed = THREE.MathUtils.clamp(Math.abs(forwardSpeed) / 5, 0, 1);
     const yawImpulse = steer.current * steeringAtSpeed * steeringAuthority
       * Math.sign(forwardSpeed || 1) * VEHICLE.steeringTorque * dt;
     rb.applyTorqueImpulse({ x: 0, y: yawImpulse, z: 0 }, true);
