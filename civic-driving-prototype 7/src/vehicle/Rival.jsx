@@ -12,7 +12,7 @@ export default function Rival() {
   const model = useMemo(() => gltf.scene.clone(true), [gltf.scene]);
   const curve = useMemo(() => createTrackCurve(), []);
   const progress = useRef(0.045);
-  const speed = 13.5;
+  const speed = 17.5;
   const curveLength = useMemo(() => curve.getLength(), [curve]);
 
   useFrame((_, delta) => {
