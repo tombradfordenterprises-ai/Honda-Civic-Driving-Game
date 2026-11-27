@@ -8,9 +8,13 @@ export const VEHICLE = {
   brakeForce: 1500,
   rollingResistance: 2,
   handbrakeDrag: 11,
-  steeringDamping: 1.8,
-  steeringTorque: 100,
-  frontWheelMaxAngle: 0.18,
+  steeringDamping: 3.2,
+  steeringTorque: 68,
+  frontWheelMaxAngle: 0.34,
+  roadHalfWidth: 6,
+  grassSpeedMultiplier: 0.48,
+  grassDriveMultiplier: 0.62,
+  grassDrag: 9,
   wheelRadius: 0.31,
 
   // Visual spring/damper suspension tuning (metres and response rates).
