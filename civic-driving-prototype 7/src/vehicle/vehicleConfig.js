@@ -3,8 +3,8 @@ export const VEHICLE = {
   modelScale: 0.001,
   modelOffset: [0.109525, 1.64057, -1.15472],
   mass: 1050,
-  maxForwardSpeed: 18,
-  driveForce: 350,
+  maxForwardSpeed: 25,
+  driveForce: 430,
   brakeForce: 1500,
   rollingResistance: 2,
   handbrakeDrag: 11,
@@ -15,15 +15,18 @@ export const VEHICLE = {
 
   // Visual spring/damper suspension tuning (metres and response rates).
   suspensionTravel: 0.045,
-  suspensionSpring: 34,
-  suspensionDamping: 8.5,
-  suspensionPitchResponse: 0.0022,
-  suspensionRollResponse: 0.0018,
+  suspensionSpring: 42,
+  suspensionDamping: 12,
+  suspensionPitchResponse: 0.0015,
+  suspensionRollResponse: 0.0012,
 
-  // Smooth third-person chase camera.
-  cameraHeight: 3.2,
-  cameraDistance: 8.5,
-  cameraLookAhead: 5.5,
-  cameraFollowSpeed: 4.5,
-  cameraLookSpeed: 6
+  // Low, close bumper-style chase camera with speed-sensitive perspective.
+  cameraHeight: 1.55,
+  cameraDistance: 3.8,
+  cameraLookAhead: 8,
+  cameraFollowSpeed: 3.2,
+  cameraLookSpeed: 3.8,
+  cameraBaseFov: 64,
+  cameraFastFov: 78,
+  cameraFovDamping: 2.5
 };
