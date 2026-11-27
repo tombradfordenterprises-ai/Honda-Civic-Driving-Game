@@ -85,6 +85,21 @@ export default function Track() {
     dashes.push({ point, angle, key: i });
   }
 
+  const finishPoint = roadRef.curve.getPointAt(0);
+  const finishTangent = roadRef.curve.getTangentAt(0).normalize();
+  const finishAngle = Math.atan2(finishTangent.x, finishTangent.z);
+  const finishTiles = [];
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 12; col++) {
+      finishTiles.push({
+        key: row * 12 + col,
+        x: (col - 5.5) * 1,
+        z: (row - 0.5) * 0.85,
+        color: (row + col) % 2 === 0 ? '#f4f4ee' : '#202326'
+      });
+    }
+  }
+
   const edgeLines = [roadRef.leftPts, roadRef.rightPts].map(pts => {
     const positions = [];
     for (const pt of pts) positions.push(pt.x, -0.373, pt.z);
@@ -136,6 +151,16 @@ export default function Track() {
     <mesh geometry={roadRef.geometry} receiveShadow>
       <meshStandardMaterial map={asphalt} color="#b7b7b7" roughness={0.94} metalness={0.02} side={THREE.DoubleSide} />
     </mesh>
+
+    {/* Checkered three-lap start and finish line */}
+    <group position={[finishPoint.x, -0.355, finishPoint.z]} rotation={[0, finishAngle, 0]}>
+      {finishTiles.map(tile => (
+        <mesh key={tile.key} position={[tile.x, 0, tile.z]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[1, 0.85]} />
+          <meshBasicMaterial color={tile.color} />
+        </mesh>
+      ))}
+    </group>
 
     {/* Painted road-edge lines and broken centre line */}
     {edgeLines.map((geometry, i) => (
