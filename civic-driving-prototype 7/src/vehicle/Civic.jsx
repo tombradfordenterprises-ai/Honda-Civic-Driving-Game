@@ -168,9 +168,14 @@ export default function Civic({ keys, onTelemetry, cameraMode = 'bumper', onLap,
     const speedRatioForSteering = THREE.MathUtils.clamp(Math.abs(forwardSpeed) / VEHICLE.maxForwardSpeed, 0, 1);
     const steeringAuthority = THREE.MathUtils.lerp(1, VEHICLE.highSpeedSteering, speedRatioForSteering);
     const steeringAtSpeed = THREE.MathUtils.clamp(Math.abs(forwardSpeed) / 5, 0, 1);
-    const yawImpulse = steer.current * steeringAtSpeed * steeringAuthority
-      * Math.sign(forwardSpeed || 1) * VEHICLE.steeringTorque * dt;
-    rb.applyTorqueImpulse({ x: 0, y: yawImpulse, z: 0 }, true);
+    // Use a damped target yaw rate instead of a raw torque impulse.
+    // Raw torque was exciting the chassis inertia and causing a left/right
+    // oscillation as the car accelerated, even with small steering inputs.
+    const desiredYawRate = steer.current * steeringAtSpeed * steeringAuthority
+      * Math.sign(forwardSpeed || 1) * 1.25;
+    const currentYawRate = rb.angvel().y;
+    const stableYawRate = THREE.MathUtils.damp(currentYawRate, desiredYawRate, 7, dt);
+    rb.setAngvel({ x: 0, y: stableYawRate, z: 0 }, true);
 
     const steeringAngle = steer.current * VEHICLE.frontWheelMaxAngle * steeringAuthority;
     if (wheelRig.frontLeft) wheelRig.frontLeft.steer.rotation.y = steeringAngle;
