@@ -4,6 +4,7 @@ import { CuboidCollider, RigidBody } from '@react-three/rapier';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { VEHICLE } from './vehicleConfig.js';
+import { createTrackCurve, distanceToTrack } from '../world/trackPath.js';
 
 const WHEEL_PART_PATTERN = /^(guma_|rim_|rim_cap_|srouby_|uwu_disc|uwu_pad)/i;
 const WHEEL_SIDE = {
@@ -52,6 +53,7 @@ export default function Civic({ keys, onTelemetry }) {
   const visual = useRef();
   const wheelSpin = useRef(0);
   const gltf = useGLTF(VEHICLE.model);
+  const trackCurve = useMemo(() => createTrackCurve(), []);
   const model = useMemo(() => gltf.scene.clone(true), [gltf.scene]);
   const wheelRig = useMemo(() => createWheelRig(model), [model]);
   const forward = useRef(new THREE.Vector3());
@@ -92,8 +94,12 @@ export default function Civic({ keys, onTelemetry }) {
     velocity.current.copy(rb.linvel());
     const forwardSpeed = velocity.current.dot(forward.current);
 
-    const canAccelerate = forwardSpeed < VEHICLE.maxForwardSpeed;
-    const driveForce = (throttle && canAccelerate ? VEHICLE.driveForce : 0)
+    const positionNow = rb.translation();
+    const distanceFromTrack = distanceToTrack(trackCurve, positionNow.x, positionNow.z);
+    const onGrass = distanceFromTrack > VEHICLE.roadHalfWidth;
+    const surfaceDriveMultiplier = onGrass ? VEHICLE.grassDriveMultiplier : 1;
+    const canAccelerate = forwardSpeed < VEHICLE.maxForwardSpeed * (onGrass ? VEHICLE.grassSpeedMultiplier : 1);
+    const driveForce = (throttle && canAccelerate ? VEHICLE.driveForce * surfaceDriveMultiplier : 0)
       - brake * Math.sign(forwardSpeed || 1) * VEHICLE.brakeForce;
     rb.applyImpulse({
       x: forward.current.x * driveForce * dt,
@@ -101,7 +107,7 @@ export default function Civic({ keys, onTelemetry }) {
       z: forward.current.z * driveForce * dt
     }, true);
 
-    const drag = handbrake ? VEHICLE.handbrakeDrag : VEHICLE.rollingResistance;
+    const drag = handbrake ? VEHICLE.handbrakeDrag : VEHICLE.rollingResistance + (onGrass ? VEHICLE.grassDrag : 0);
     rb.applyImpulse({
       x: -velocity.current.x * drag * dt,
       y: 0,
@@ -110,7 +116,7 @@ export default function Civic({ keys, onTelemetry }) {
 
     const steeringInput = left - right;
     steer.current = THREE.MathUtils.damp(steer.current, steeringInput, VEHICLE.steeringDamping, dt);
-    const steeringAtSpeed = THREE.MathUtils.clamp(Math.abs(forwardSpeed) / 7, 0, 1);
+    const steeringAtSpeed = THREE.MathUtils.clamp(Math.abs(forwardSpeed) / 3.5, 0, 1);
     rb.applyTorqueImpulse({
       x: 0,
       y: steer.current * steeringAtSpeed * Math.sign(forwardSpeed || 1)
