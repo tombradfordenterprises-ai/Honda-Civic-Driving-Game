@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import * as THREE from 'three';
+import { createTrackCurve } from './trackPath.js';
 
 const treeTrunkGeometry = new THREE.CylinderGeometry(0.16, 0.23, 1.8, 7);
 const treeTopGeometry = new THREE.ConeGeometry(1.05, 2.8, 8);
@@ -41,26 +42,7 @@ function makeAsphaltTexture() {
 
 export default function Track() {
   const roadRef = useMemo(() => {
-    // Closed, oval-like circuit with linked bends and a short flowing start section.
-    const points = [
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, 0, 30),
-      new THREE.Vector3(-12, 0, 60),
-      new THREE.Vector3(-38, 0, 88),
-      new THREE.Vector3(-75, 0, 105),
-      new THREE.Vector3(-115, 0, 100),
-      new THREE.Vector3(-145, 0, 75),
-      new THREE.Vector3(-162, 0, 38),
-      new THREE.Vector3(-165, 0, -5),
-      new THREE.Vector3(-150, 0, -48),
-      new THREE.Vector3(-120, 0, -82),
-      new THREE.Vector3(-82, 0, -105),
-      new THREE.Vector3(-42, 0, -110),
-      new THREE.Vector3(-12, 0, -88),
-      new THREE.Vector3(0, 0, -58),
-      new THREE.Vector3(0, 0, -30)
-    ];
-    const curve = new THREE.CatmullRomCurve3(points, true, 'catmullrom', 0.45);
+    const curve = createTrackCurve();
     const segments = 720;
     const width = 12;
     const positions = [];
